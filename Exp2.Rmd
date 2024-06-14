@@ -12,3 +12,134 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Experiment 2
 
 In this experiment, we asked if the presence of a complete artificial honeypot (i.e. a ‘model’) would affect bees’ likelihood of repairing and using an incomplete honeypot.
+
+### 0) Dataset
+
+```{r AddData}
+# load packages
+library(tidyverse)
+
+file <- "https://raw.githubusercontent.com/jennieandbird/Honeypots/Data/2024-03-22_Exp2.csv"
+exp2data <- read_csv(file)
+
+# Remove any blank entries leftover from the Excel to CSV export.
+exp2data <- exp2data |> drop_na(microcolony)
+```
+
+#### Explanation of variables:
+
+-   **microcolony:** a unique number for each microcolony (001–133) in the dataset.
+
+-   **label:** how the microcolonies were labeled during the experiment (e.g., "2.E8" meaning Treatment #2, Colony E, Microcolony #8) and is included in the dataset for ease of data entry.
+
+-   **colony:** the bumblebee colony from which worker bees were sourced.
+
+-   **incomplete:** the type of incomplete honeypot (½-HP written "0.50", or ¾-HP written "0.75") for the treatment group.
+
+-   **model:** whether the treatment group included a 1-HP model ("Y") or no 1-HP model ("N").
+
+-   **start_date:** when the microcolony was set up (3 worker bees placed in an enclosure with pollen ball, HP(s), and sucrose feeder).
+
+-   **end_date:** final day of observations (Day 21) when the bees were removed and measured, and the microcolonies were photographed.
+
+-   **bees_at_end:** number of live bees at Day 21.
+
+-   **nectar_incomplete_ever:** whether the bees ever stored nectar (sucrose) in a repaired incomplete honeypot (1 = yes, 0 = no).
+
+-   **nectar_incomplete_at_end:** whether the bees were storing nectar (sucrose) in a repaired incomplete honeypot on Day 21 (1 = yes, 0 = no).
+
+-   **pb_status:** the state of the pollen ball on Day 21 (C = *crumbs*, torn into small pieces; D = *distanced*, intact, but pushed away from one or both of the artificial honeypots; I = *intact and in-place*, intact and in contact with artificial HP(s); P = *partially dismantled*, pieces have been torn away but part of pollen ball is still intact).
+
+-   **handmade_hp_max:** the highest number (out of all observation days) of natural wax honeypots used (containing nectar) simultaneously.
+
+-   **handmade_hp_end:** the number of natural wax honeypots used simultaneously on Day 21.
+
+-   **order_honeypot:** the order in which bees built their first natural wax honeypot. (NA = bees never built a wax honeypot, 1 = bees built a wax honeypot first, before using the incomplete honeypot or 1-HP, 2 = bees built a wax honeypot after using the incomplete honeypot or 1-HP...) If bees first built a wax honeypot and used 1-HP on the same observation day, the orders can tie.
+
+-   **order_1hp:** the order in which bees stored nectar (sucrose) in the 1-HP. (NA = bees were in treatment group without 1-HP, 0 = bees never used 1-HP, 1 = bees used 1-HP first...)
+
+-   **order_incomplete:** the order in which bees stored nectar (sucrose) in a repaired incomplete honeypot. (NA = bees did not use incomplete HP, 1 = bees used incomplete honeypot first...)
+
+-   **1hp_storage:** whether the bees used the 1-HP for storage (NA = treatment group without 1-HP, 0 = no storage, 1 = storage).
+
+-   **1hp_hat:** whether the bees built a wax ring/dome (recorded as "halo" and "hat" in observations) on top of the 1-HP (NA = treatment group without 1-HP, 0 = no wax ring/dome, 1 = bees built a wax ring/dome).
+
+-   **area_brood:** brood clump area measured in ImageJ from Day 21 photographs.
+
+-   **area_honeypot:** wax honeypot area measured in ImageJ from Day 21 photographs.
+
+### 1) Does a bee's likelihood of repairing (and storing nectar within) an incomplete HP depend on the presence of a 'model' HP-1 or the type of incomplete HP?
+
+```{r Question1}
+# load packages
+library(Matrix)
+library(lme4)
+library(emmeans)
+library(car)
+library(ggplot2)
+library(ggeffects)
+
+# set variables as factors or continuous
+exp2data$model<-factor(exp2data$model)
+exp2data$incomplete<-factor(exp2data$incomplete)
+exp2data$colony<-factor(exp2data$colony)
+exp2data$nectar_incomplete_ever<-as.numeric(exp2data$nectar_incomplete_ever)
+
+# set up model1 options
+exp2model1_interaction <- glmer(nectar_incomplete_ever ~ model + incomplete + model:incomplete + (1|colony), family = binomial, data = exp2data)
+exp2model1_NOinteraction <- glmer(nectar_incomplete_ever ~ model + incomplete + (1|colony), family = binomial, data = exp2data)
+exp2model1_model <- glmer(nectar_incomplete_ever ~ model + (1|colony), family = binomial, data = exp2data)
+
+# compare models with and without interaction
+anova(exp2model1_interaction, exp2model1_NOinteraction) 
+# interaction does not significantly improve explanatory power of model
+# model with interaction AIC = 172.65, without interaction AIC = 171.08
+
+# compare models with no interaction (just model + incomplete) and one with model only
+anova(exp2model1_NOinteraction, exp2model1_model)
+# model with "model + incomplete" AIC = 171.08, model with "model" only AIC = 170.49.
+
+Anova(exp2model1_NOinteraction) # effect of "model" p = 0.005407; effect of "incomplete" p = 0.238569
+Anova(exp2model1_model) # if we remove "incomplete", the effect of "model" is p = 0.005793
+```
+
+[Bees are more likely to use their incomplete honeypot for storage if they have a 1-HP model.]{.underline}
+
+In the glmer with "model + incomplete", the "model" is significant (p = 0.0054) and the "incomplete" HP type is not (p = 0.2386). So if I remove the non-significant "incomplete" from the glmer (just like I removed the non-significant "model:incomplete" interaction), model is still significant (p = 0.0058).
+
+Is it better to use the glmer that is the most sparse ("model" as the only predictor variable)?
+
+```{r Question1_Graphs}
+# load more packages
+library(ggsignif)
+library(extrafont)
+library(extrafontdb)
+library(scales)
+library(stringr)
+
+# Wrap the y-axis label
+wrapped_label <- str_wrap("Microcolonies Repairing & Using Incomplete Honeypots (%)", width = 40)
+
+# bar graph with combined results for Groups 1&3 and 2&4
+plot1 <- ggplot(exp2data, aes(factor(model), nectar_incomplete_ever)) +
+  stat_summary(fun=mean, geom="bar", fill="#5BA300") +
+  geom_signif(
+    comparisons = list(c("N", "Y")),
+    map_signif_level = TRUE, 
+    y_position = 0.5,
+    size = 0.9,
+    textsize = 8) +
+  scale_y_continuous(labels = scales::percent, limits=c(0,1), expand = c(0, 0)) +
+  labs(y = wrapped_label) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black", size = 1.01),
+        axis.text = element_text(color = "black", size = 11),
+        axis.title.x = element_blank(),  
+        axis.title.y = element_text(size = 11), 
+        text = element_text(family= "Arial")) +  
+  scale_x_discrete(labels=c("No 'Model' (1-HP)", "'Model' (1-HP)")) 
+
+print(plot1)
+```
