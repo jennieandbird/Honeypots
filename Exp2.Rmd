@@ -1,0 +1,14 @@
+---
+title: "Exp2"
+author: "Jennie"
+date: "2024-06-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Experiment 2
+
+In this experiment, we asked if the presence of a complete artificial honeypot (i.e. a ‘model’) would affect bees’ likelihood of repairing and using an incomplete honeypot.
